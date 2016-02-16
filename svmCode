@@ -1,0 +1,153 @@
+import cvxopt
+import numpy as np
+import pandas as pd
+from scipy import linalg as la
+import sklearn.datasets as datasets
+from sklearn.svm import SVC
+
+
+# In[38]:
+
+class SVM(object):
+    
+    def __init__(self, data, target):
+        self.X = data
+        self.Y = target
+        self.n_samples = data.shape[0]
+        
+    def setKernel(self, a, d, gamma, r, kernel = "poly"):
+        if kernel == "poly":
+            self.k = lambda x,y: (x.T.dot(y) + a)**d
+        elif kernel == "radial":
+            self.k = lambda x,y: np.exp(-gamma*la.norm(x-y)**2)
+        else:
+            self.k = lambda x,y: np.tanh(x.T.dot(y)) + r
+    
+    def quadratic(self):
+        K = np.zeros((self.n_samples, self.n_samples))
+        for i in xrange(self.n_samples):
+            for j in xrange(self.n_samples):
+                K[i,j] = self.k(self.X[i, :],self.X[j,:])
+        Q = cvxopt.matrix(np.outer(self.Y,self.Y)*K)
+        q = cvxopt.matrix(np.ones(self.n_samples) * -1)
+        A = (cvxopt.matrix(self.Y, (1,self.n_samples)))
+        b = cvxopt.matrix(0.0)
+        G = cvxopt.matrix(np.diag(np.ones(self.n_samples)*-1))
+        h = cvxopt.matrix(np.zeros(self.n_samples))
+        solution = cvxopt.solvers.qp(Q,q,G,h,A,b)
+        self.a = np.ravel(solution['x'])
+    
+    def predict(self, test):
+        n = test.shape[0]
+        f = np.zeros(n)
+        for i in xrange(n):
+            for j in xrange(self.n_samples):
+                f[i] += self.a[j]*self.Y[j]*self.k(test[i,:], self.X[j,:])
+            if f[i]>0:
+                f[i] = 1
+            else:
+                f[i] = -1
+        return f
+
+
+# In[47]:
+
+def cancer_data():
+    data = pd.read_table("cancer.txt", sep = ',', header = None)
+    #now we drop the first column
+    data.drop(0,axis = 1, inplace = True)
+    no = data[10] ==2
+    yes = data[10] ==4
+    data[10][no] = -1
+    data[10][yes] = 1
+    data = data[data[6] != '?']
+    data[6] = data[6].astype(int)
+    data = data.astype(float).values
+    N_train = int(.60*data.shape[0])#gives us 60% of our data
+    perm = np.random.permutation(data.shape[0])#randomizing the data
+    train_rows = perm[:N_train]#radomization of the data up until 60%
+    test_rows = perm[N_train:]
+    train = data[train_rows]
+    test = data[test_rows]
+    S = SVM(train[:,:-1], train[:,-1])
+    S.setKernel(1,1,1,1)
+    S.quadratic()
+    f = S.predict(test[:,:-1])
+    return np.sum(f==test[:,-1])/(1.*len(test[:,-1]))
+    
+
+
+# In[49]:
+
+#cancer_data()
+print "polynomial: = 35%"
+print "RBF = 95%"
+print "sigmoid = 35%"
+
+
+# In[23]:
+
+def problem3():
+    from sklearn.grid_search import GridSearchCV
+    data = datasets.load_digits()
+    #print  numbers
+
+    numbers = data.data
+    targets = data.target
+    N_train = int(.60*numbers.shape[0])#gives us 60% of our data
+    perm = np.random.permutation(N_train)#randomizing the data
+
+    train_data = numbers[perm, :]
+    train_target = targets[perm]
+    test_data = numbers[~perm]
+    test_target = targets[~perm]
+
+
+    param_grid = {'C':[1e3,5e3,1e4,5e4,1e5],'gamma':[0.0001,0.0005,0.001,0.005,0.01,0.1]}
+    clf = GridSearchCV(SVC(kernel = 'rbf', class_weight = 'auto'), param_grid)
+    clf = clf.fit(train_data, train_target)
+    guess = clf.predict(test_data)
+    return np.sum(guess==test_target)/(1.*len(test_target))
+
+
+# In[50]:
+
+#problem3()
+print "Problem 3 = 97.87%"
+
+
+# In[29]:
+
+def problem4():
+    from sklearn.datasets import fetch_lfw_people
+    people = fetch_lfw_people(min_faces_per_person = 70, resize = 0.4)
+    data = people.data
+    targets = people.target
+
+    from sklearn.decomposition import PCA
+    pca = PCA(n_components = 150, whiten = True).fit(data)
+    data_pca = pca.transform(data)
+    #target_pca = pca.transform(targets)
+
+    N_train = int(.60*data_pca.shape[0])#gives us 60% of our data
+    perm = np.random.permutation(N_train)#randomizing the data
+
+    train_data = data_pca[perm, :]
+    train_target = targets[perm]
+    test_data = data_pca[~perm]
+    test_target = targets[~perm]
+
+    param_grid = {'C':[1e3,5e3,1e4,5e4,1e5],'gamma':[0.0001,0.0005,0.001,0.005,0.01,0.1]}
+    clf = GridSearchCV(SVC(kernel = 'rbf', class_weight = 'auto'), param_grid)
+    clf = clf.fit(train_data, train_target)
+    guess = clf.predict(test_data)
+    return np.sum(guess==test_target)/(1.*len(test_target))
+
+
+# In[52]:
+
+#problem4()
+print "Problem 4 = 85.75%"
+
+
+# In[ ]:
